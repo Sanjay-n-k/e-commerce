@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Buy {{ product.name }}</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .buy-container {
+            background-color: white;
+            padding: 20px 40px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            max-width: 400px;
+            width: 100%;
+            text-align: center;
+        }
+
+        .buy-container h1 {
+            margin-bottom: 20px;
+            color: #333;
+        }
+
+        .buy-container form {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .buy-container label {
+            text-align: left;
+            font-weight: bold;
+            margin-bottom: 5px;
+            display: block;
+        }
+
+        .buy-container input[type="number"],
+        .buy-container input[type="text"] {
+            margin-bottom: 15px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        .buy-container input[type="number"]:focus,
+        .buy-container input[type="text"]:focus {
+            border-color: #3399ff;
+            outline: none;
+        }
+
+        .buy-container button[type="button"] {
+            padding: 10px;
+            background-color: #3399ff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s;
+            margin-bottom: 10px;
+        }
+
+        .buy-container button[type="button"]:hover {
+            background-color: #007acc;
+        }
+
+        .buy-container .back-button {
+            background-color: #ddd;
+            color: #333;
+        }
+
+        .buy-container .back-button:hover {
+            background-color: #ccc;
+        }
+    </style>
+</head>
+<body>
+    <div class="buy-container">
+        <h1>Buy {{ product.name }}</h1>
+        <form id="payment-form" method="post">
+            {% csrf_token %}
+            <label for="quantity">Quantity:</label>
+            <input type="number" id="quantity" name="quantity" required>
+
+            <label for="phone_number">Phone Number:</label>
+            <input type="text" id="phone_number" name="phone_number" required>
+
+            <button type="button" onclick="createOrder()">Buy Now</button>
+        </form>
+        <button type="button" class="back-button" onclick="goBack()">Back to Product List</button>
+    </div>
+
+    <!-- Include Razorpay Checkout script -->
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <script>
+        function createOrder() {
+            const quantity = document.getElementById('quantity').value;
+            const phoneNumber = document.getElementById('phone_number').value;
+
+            fetch(`/shop/buy-product/{{ product.id }}/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('[name="csrfmiddlewaretoken"]').value
+                },
+                body: JSON.stringify({
+                    quantity: quantity,
+                    phone_number: phoneNumber
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.order_id) {
+                    var options = {
+                        "key": "{{ settings.RAZORPAY_API_KEY }}", // Razorpay key
+                        "amount": data.amount, // Amount in paise
+                        "currency": data.currency,
+                        "name": "{{ product.name }}",
+                        "description": "Product Purchase",
+                        "order_id": data.order_id,
+                        "handler": function (response) {
+                            // Payment was successful
+                            fetch('/shop/payment-success/', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'X-CSRFToken': document.querySelector('[name="csrfmiddlewaretoken"]').value
+                                },
+                                body: JSON.stringify({
+                                    razorpay_payment_id: response.razorpay_payment_id,
+                                    razorpay_order_id: response.razorpay_order_id,
+                                    razorpay_signature: response.razorpay_signature
+                                })
+                            })
+                            .then(response => response.json())
+                            .then(data => {
+                                if (data.status === 'success') {
+                                    alert('Payment successful!');
+                                    window.location.href = '/shop/order_confirmation/';
+                                } else {
+                                    alert('Payment verification failed!');
+                                }
+                            });
+                        },
+                        "modal": {
+                            "ondismiss": function() {
+                                alert('Payment cancelled');
+                            }
+                        },
+                        "prefill": {
+                            "contact": phoneNumber
+                        },
+                        "theme": {
+                            "color": "#3399cc"
+                        }
+                    };
+                    var rzp1 = new Razorpay(options);
+                    rzp1.open();
+                } else {
+                    alert('Error creating order.');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+            });
+        }
+
+        function goBack() {
+            window.location.href = "{% url 'product_list' %}";
+        }
+    </script>
+
+    <!-- Include CSRF token for AJAX requests -->
+    <input type="hidden" name="csrfmiddlewaretoken" value="{% csrf_token %}">
+</body>
+</html>
